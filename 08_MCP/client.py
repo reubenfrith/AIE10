@@ -16,7 +16,7 @@ from pydantic import AnyUrl
 
 
 DEFAULT_SERVER_URL = "http://localhost:8000"
-DEFAULT_MODEL = "gpt-5.4-mini"
+DEFAULT_MODEL = "gpt-4o-mini"
 SYSTEM_PROMPT = """You are a helpful Cat Shop assistant.
 
 Use the Cat Shop MCP tools to answer catalog and cart questions. Never invent
