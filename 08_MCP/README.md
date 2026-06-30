@@ -192,3 +192,23 @@ Add at least one new tool to the cat shop MCP server (e.g., `search_products`, `
 Build a custom MCP client that connects to the cat shop server over Streamable HTTP, authenticates via OAuth, and orchestrates a multi-step shopping flow (browse → add to cart → checkout). Compare the developer experience of MCP-based tool integration vs. traditional REST API calls.
 
 Include your findings and a demo in your Loom video.
+
+
+Refer to advanced_client.ipynb for more information on building a custom MCP client.
+
+## MCP vs Traditional REST
+
+Some thoughts and a summary - If I already know the endpoints and I'm writing the client by hand, REST wins. MCP just makes me do more work for the same result — there's the protocol envelope to unwrap and the OAuth setup to wire up, when `httpx.get("/products")` would've done the job.
+
+It flips once an AI agent is the one making the calls instead of me. `list_tools()` hands the agent the full list of what it can do, typed, at runtime, so it doesn't need to read any docs first. The schema lets it check its arguments before calling, every response comes back in the same shape so error handling doesn't change tool to tool, and auth is set up once on the transport so every call already carries the right user. So it comes down to who's calling: my code against endpoints I control, use REST; an agent that has to figure out the tools on its own, that's the whole point of MCP.
+
+| Dimension | MCP | Traditional REST |
+|---|---|---|
+| Tool discovery | In-protocol JSON Schema via `list_tools()` | Out-of-band docs (OpenAPI, README) |
+| Auth lifecycle | SDK-managed; token refresh automatic | Manual Bearer header per call; refresh DIY |
+| Response parsing | Extra `json.loads(content[0].text)` unwrap | Direct `.json()` |
+| Response shape | Always `CallToolResult` — uniform | Varies per endpoint and API designer |
+| Type safety | `inputSchema` enables pre-call validation | Bespoke per endpoint |
+| Multi-step session | Stateful; auth context maintained across calls | Stateless HTTP; auth repeated |
+| AI agent integration | First-class — `list_tools()` → `call_tool()` | Requires custom wrappers and prompt engineering |
+| Setup complexity | ~40 lines of OAuth boilerplate | `httpx.AsyncClient(base_url=..., headers=...)` |
