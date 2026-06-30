@@ -44,6 +44,7 @@ Available MCP tools:
 - `view_cart`
 - `remove_from_cart`
 - `checkout`
+- `search_products` (added in Activity 1)
 
 ## Setup
 
