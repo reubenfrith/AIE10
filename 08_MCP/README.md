@@ -155,7 +155,14 @@ Why is OAuth important for MCP servers, and what security considerations should 
 
 #### Answer
 
-_(insert your answer here)_
+OAuth matters here because MCP tools can do real things — in our case, adding items to a cart and completing a purchase. Without auth, any client that can reach the server can call those tools on behalf of anyone. OAuth gives us identity: the server knows "who" is calling, which is what makes per-user state like `view_cart` and `checkout` work correctly.
+
+A few security things worth keeping in mind when exposing tools to AI clients:
+
+- **Tools can have side effects.** `checkout` places an order — that's irreversible. You want tight control over what triggers it. In this build, the system prompt explicitly tells the agent not to call checkout unless the user asks directly. That's an app-level guardrail on top of auth, not a replacement for it.
+- **AI clients act on inferred intent.** A human user clicking a button is making a deliberate choice; an agent inferring "they probably want to buy it" is not the same thing. The more powerful the tool, the more careful you need to be about what's exposed and under what conditions it fires.
+- **Dynamic client registration is convenient but loose.** This server allows any client to register, which is great for development but in a real deployment you'd want to restrict that — whitelist known clients or require manual approval.
+- **Token scope limits blast radius.** Separating `read` and `write` scopes means a compromised read-only token can't trigger a checkout. Narrow scopes are worth the extra setup.
 
 ### Question #2
 
@@ -163,7 +170,17 @@ What is Streamable HTTP transport in MCP, and why might you expose a server publ
 
 #### Answer
 
-_(insert your answer here)_
+Streamable HTTP is an HTTP-based transport for MCP — the client sends requests over standard HTTP POST and the server can stream responses back using SSE (Server Sent Events) if needed. It's stateless from the transport layer's perspective, which makes it easy to deploy and proxy.
+
+The alternative is stdio, where the server runs as a local subprocess and communicates over stdin/stdout. That's simpler it needs zero auth overhead, no networking but it's single-caller by design. Only the process that spawned it can talk to it, and there's no concept of user identity, so per-user state like a shopping cart doesn't exist.
+
+Going with Streamable HTTP and OAuth made sense for this project as soon as we wanted:
+
+- **Multiple users with their own carts.** stdio can't do this — there's no identity, so there's no "whose cart is this?"
+- **Remote access.** ngrok tunnels work out of the box; you can point any MCP-compatible client at the URL and it just works.
+- **Real auth flow.** OAuth with PKCE gives us proper token-based identity. The `OAuthClientProvider` handles token refresh automatically, so the session stays alive across multiple tool calls without the client having to think about it.
+
+For a quick personal demo or a local dev tool, stdio is the right call — it's faster to set up and there's nothing to secure. But the moment you want multiple users, remote deployment, or any kind of stateful per-user behaviour, Streamable HTTP with OAuth is the only path that actually works.
 
 ## Activity 1: Extend the MCP Server
 
