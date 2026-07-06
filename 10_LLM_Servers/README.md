@@ -83,7 +83,14 @@ What is the difference between serverless and dedicated endpoints?
 
 #### ✅ Answer:
 
-_(insert your answer here)_
+Serverless endpoints are shared infrastructure — you send a request, Fireworks routes it to available capacity, and you pay per token. There's no setup, but you're competing with other users for resources, so latency can vary.
+
+Dedicated endpoints give you reserved capacity — a fixed number of replicas running your model exclusively. A few key differences:
+
+- **Cost model** — serverless is pay-per-token; dedicated is pay-per-hour whether you're using it or not
+- **Latency** — dedicated is more predictable since there's no queue behind shared traffic
+- **Cold starts** — serverless can have them; dedicated replicas are always warm
+- **Scale to zero** — dedicated endpoints can be configured to scale down after inactivity, which is how you avoid leaving the meter running
 
 ### ❓ Question #2:
 
@@ -91,7 +98,12 @@ Why is it important to consider token throughput and latency when choosing an LL
 
 #### ✅ Answer:
 
-_(insert your answer here)_
+If a user is waiting on a response, both of these directly affect how the app feels to use:
+
+- **Latency (time to first token)** — this is what the user notices first. A slow first token makes the app feel unresponsive even if the full response is good
+- **Throughput (tokens per second)** — once streaming starts, slow throughput means the user is watching text trickle in. For long responses this gets painful quickly
+- **Cost at scale** — a model that's cheap per token but slow can still cost more in practice if you need more replicas to handle concurrent users
+- **Model capability trade-off** — bigger models are generally smarter but slower. For simple tasks like classification or short Q&A, a smaller faster model will give a better user experience without sacrificing much quality
 
 ## Activity 1: RAGAS Evaluation with Cost Analysis
 
