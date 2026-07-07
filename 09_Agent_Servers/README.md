@@ -66,6 +66,9 @@ Expected agent project layout:
         └── api/[...path]/route.ts
 ```
 
+
+CHECK IT OUT here https://frontend-sable-iota-91.vercel.app/
+
 ## Why GCP, Supabase and Upstash instead of `langgraph deploy`
 
 `langgraph deploy` is the easiest path — one command and LangSmith hosts everything for you — but it requires a LangSmith Plus subscription at ~$40/month. For a course project that's hard to justify. GCP Cloud Run is pay-per-use with a generous free tier, and the LangGraph production server image exposes the exact same API surface (threads, runs, assistants, streaming) that LangSmith would host, so nothing changes on the frontend side. Supabase gives you a free hosted Postgres for thread and checkpoint persistence, and Upstash gives you serverless Redis for pub/sub streaming and the run queue — both have free tiers that are more than enough for this. LangSmith itself is still in the picture, just for the free tracing tier rather than hosting. The tradeoff is a bit more setup upfront, but once it's running it costs nothing.
