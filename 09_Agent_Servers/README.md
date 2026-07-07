@@ -448,6 +448,10 @@ Why should the LangSmith API key live in a Next.js API route (server-side) inste
 
 Build an `agent_with_helpfulness` graph that adds a post-response helpfulness check: after the agent answers, a judge model decides whether the response is helpful, and if not, the graph loops back for another attempt (with a safe loop limit). Register it in `langgraph.json`, deploy it, then compare LangSmith traces for queries that pass vs. fail the helpfulness check. Does the retry loop behave differently in Studio vs. production?
 
+Look at workbook verify_helpfulness_loop.ipynb for a sample test harness that streams responses from deployed agent vs local agent. We ran 3 queries in parallel — a deworming question, a dehydration question, and the deliberately vague "My cat is sick, help." All three passed the helpfulness judge on the first attempt in both environments (`retry_count=1, is_helpful=True`), including the vague one, which suggests the judge is reasonably lenient and the agent's tool belt (RAG + Tavily) is good enough to produce an acceptable answer even for under-specified questions. To reliably trigger a retry you'd probably need something genuinely outside the cat health domain. We can see that they behave similar however the deployed agent was a lot slower and timed out on the second question after 180s — that's a Cloud Run cold-start issue rather than a graph bug. It appears that the agents are slightly flaky in their environments and more robust error handling is needed to make them more reliable.
+
+Also refer the ARCHITECTURE.md for a detailed description of how things work since I deployed everything to GCP and Vercel. Due to cost saving measures.
+
 ## Advanced Activity: Auth and Custom Routes
 
 Research [LangSmith Deployments custom routes](https://github.com/langchain-samples/lsd-custom-route-react-ui) and describe how you could add authentication so each user only sees their own threads. Optionally implement a simple auth gate on your Vercel frontend.

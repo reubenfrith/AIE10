@@ -10,10 +10,15 @@ This project deploys a LangGraph cat health agent as a production API backend on
 
 ```mermaid
 flowchart LR
-  User[User in browser] --> Vercel[Next.js\nVercel]
-  Vercel -->|"/api proxy route\n(injects no key — unauthenticated)"| CloudRun[LangGraph Server\nGCP Cloud Run]
-  CloudRun --> Agent[Cat Health Agent\nGPT-4o-mini]
-  Agent --> Tools
+  User[User in browser] --> Vercel[Next.js · Vercel\nagent selector toggle]
+  Vercel -->|"/api proxy route\nunauthenticated"| CloudRun[LangGraph Server\nGCP Cloud Run]
+
+  CloudRun --> SimpleAgent[simple_agent\ngpt-5.4-mini + tools]
+  CloudRun --> HelpAgent[agent_with_helpfulness\ngpt-5.4-mini + judge loop]
+
+  SimpleAgent --> Tools
+  HelpAgent --> Tools
+  HelpAgent --> Judge[Judge LLM\nHelpfulnessVerdict\nmax 3 retries]
 
   subgraph Tools
     RAG[RAG\nQdrant in-memory\n+ PDF]
@@ -23,7 +28,7 @@ flowchart LR
 
   CloudRun --> Supabase[(Supabase\nPostgreSQL\nThreads + Runs)]
   CloudRun --> Upstash[(Upstash\nRedis\nStreaming + Queue)]
-  CloudRun -->|traces| LangSmith[LangSmith\nFree tier\nObservability]
+  CloudRun -->|traces| LangSmith[LangSmith\nProject: cat-health-agent]
 
   subgraph GCP Secret Manager
     S1[OPENAI_API_KEY]
@@ -44,7 +49,7 @@ flowchart LR
 
 The LangGraph agent is packaged using `langgraph build` into a Docker image and deployed to Cloud Run. The image bundles:
 
-- The compiled LangGraph graph (`app/graphs/simple_agent.py`)
+- All compiled LangGraph graphs (`app/graphs/simple_agent.py`, `app/graphs/agent_with_helpfulness.py`)
 - All Python dependencies
 - The PDF data directory (baked in — no external storage needed for RAG)
 
@@ -97,9 +102,36 @@ The Next.js app has two responsibilities:
 
 1. **Secure proxy** (`app/api/[...path]/route.ts`) — forwards all requests to the Cloud Run agent URL using `langgraph-nextjs-api-passthrough`. This keeps the agent URL server-side; the browser never calls Cloud Run directly.
 
-2. **Chat UI** (`app/page.tsx`) — uses the `useStream` hook from `@langchain/react` to stream agent responses in real time. Streamed events (tool calls, AI tokens, final answers) arrive via Server-Sent Events through the proxy route.
+2. **Chat UI** (`app/page.tsx`) — uses the `useStream` hook from `@langchain/react` to stream agent responses in real time. Streamed events (tool calls, AI tokens, final answers) arrive via Server-Sent Events through the proxy route. An agent selector toggle in the header lets users switch between `simple_agent` and `agent_with_helpfulness`; switching remounts the Chat component to start a fresh thread.
 
 **Password gate:** A lightweight client-side password gate (`components/password-gate.tsx`) wraps the chat UI. The secret word is stored in `NEXT_PUBLIC_ACCESS_PASSWORD` and the authenticated state is persisted in `localStorage`. This prevents casual access without adding auth infrastructure.
+
+---
+
+### Graphs
+
+Two graphs are registered in `langgraph.json` and baked into the Cloud Run image:
+
+| Graph ID | File | Description |
+|----------|------|-------------|
+| `simple_agent` | `app/graphs/simple_agent.py` | Base ReAct agent with tool belt (RAG, Tavily, Arxiv) |
+| `agent_with_helpfulness` | `app/graphs/agent_with_helpfulness.py` | ReAct agent wrapped in a helpfulness feedback loop |
+
+#### `agent_with_helpfulness` — How It Works
+
+After the inner ReAct agent produces a response, a judge node evaluates it:
+
+```
+START → run_agent → judge_response ─► END          (if helpful or retry_count ≥ 3)
+                         │
+                         └──► run_agent             (if not helpful, retry_count < 3)
+```
+
+- **`run_agent`** — invokes the inner ReAct agent. On retries (retry_count > 0), appends a nudge HumanMessage so the agent knows its previous answer was insufficient.
+- **`judge_response`** — extracts the original user question and last AI message content (not the raw tool-call chain), passes them to a separate LLM call with `HelpfulnessVerdict` structured output (`is_helpful: bool`, `reason: str`), and increments `retry_count`.
+- **`route_after_judge`** — exits if `is_helpful` is true or `retry_count ≥ 3`; loops otherwise. Maximum three total attempts.
+
+The judge verdict is visible in LangSmith traces under each `judge_response` span.
 
 ---
 
@@ -107,9 +139,9 @@ The Next.js app has two responsibilities:
 
 Even though LangSmith is not used for hosting, it is still used for tracing. Setting `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` on the Cloud Run service causes the agent to forward traces to LangSmith after every run.
 
-View traces at [smith.langchain.com](https://smith.langchain.com) → Projects → `default`.
+View traces at [smith.langchain.com](https://smith.langchain.com) → Projects → `cat-health-agent`.
 
-To group traces under a custom project name, set `LANGCHAIN_PROJECT=cat-health-agent` on the Cloud Run service.
+The Cloud Run service sets `LANGCHAIN_PROJECT=cat-health-agent`, so all runs (both `simple_agent` and `agent_with_helpfulness`) land in the same project. Filter by the `graph_id` metadata field to compare traces across graphs.
 
 ---
 
@@ -118,10 +150,13 @@ To group traces under a custom project name, set `LANGCHAIN_PROJECT=cat-health-a
 | Decision | Choice | Reason |
 |----------|--------|--------|
 | Agent hosting | GCP Cloud Run | Avoids LangSmith Plus ($40/month); same API surface |
+| Graphs | `simple_agent` + `agent_with_helpfulness` | Both baked into the same Docker image; registered in `langgraph.json` |
+| Helpfulness loop | Judge node with structured output | Separate LLM call on clean input (question + last AI response) avoids message-validation errors; verdict visible in LangSmith |
 | Database | Supabase (free) | Free PostgreSQL; direct connection avoids PgBouncer issues |
 | Redis | Upstash (free) | Serverless Redis; required by LangGraph production server |
 | Secrets | GCP Secret Manager | Keeps keys out of shell history and env var plaintext |
 | Frontend | Vercel | Best Next.js support; free hobby tier |
+| Agent selector | Toggle in header, `key={agentId}` on Chat | Forces component remount on switch — clean thread per assistant |
 | Auth | Client-side password gate | Simple, no auth infrastructure needed |
 | Observability | LangSmith free tier | Retains tracing without paying for hosting |
 | Image platform | `linux/amd64` | Cloud Run is x86; Mac M-series builds arm64 by default |
