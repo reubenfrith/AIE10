@@ -73,7 +73,17 @@ In `02_Cat_Health_Agent_Caching.ipynb`, a semantic cache can serve a paraphrased
 
 #### ✅ Answer
 
-_(insert your answer here)_
+Cosine similarity measures how alike two sentences look, not whether the answer changes — chocolate/chicken score high because they share the same sentence template, not because the outcomes are close.
+
+No single threshold can fix this — set it high enough to block dangerous collisions and you also reject valid paraphrases; set it low enough to catch paraphrases and some dangerous pair still slips through.
+
+The fix is to gate on a deterministic escalation rail before the cache is ever consulted, not on the similarity score.
+
+If that rail flags escalate — poisoning, dosage, emergency symptoms — skip the cache entirely, don't read from it and don't write to it.
+
+Guardrails decide what's cacheable in the first place; the similarity threshold only ever operates within the subset already judged safe.
+
+Standard hygiene like per-user scoping, TTL, and bounded cache size are still worth adding on top, but they don't fix the core problem — the rail does.
 
 ## Submitting Your Homework
 
