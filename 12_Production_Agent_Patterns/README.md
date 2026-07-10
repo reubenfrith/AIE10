@@ -65,7 +65,22 @@ In `01_Cat_Health_Agent_Guardrails.ipynb`, input rails run in a specific order: 
 
 #### ✅ Answer
 
-_(insert your answer here)_
+Why is ordering important?
+- Cost/latency funnel: regex checks (emergency, injection, PII) cost basically nothing and run in microseconds. The topical guard is a real model call: hundreds of milliseconds and real dollars. Running the free checks first means most obviously-bad or obviously-fine inputs never touch the paid model call at all.
+
+- Certainty first: the deterministic rails aren't just cheaper, they're also the ones you need to be most confident about. Something like "my cat is having a seizure" has to escalate reliably and instantly — you don't want that decision depending on a probabilistic model call that could occasionally get it wrong or add delay.
+
+- Division of labor: regex can't judge something like "how do I train my parrot to talk?" — that requires actual judgment about topic relevance. So the expensive, judgment-based model call is reserved only for the ambiguous cases that make it past the free filter.
+
+
+Why decisions (escalate / block / rewrite / allow) instead of a plain pass/fail boolean?
+
+- escalate: the user isn't doing anything wrong (e.g. describing a seizure), but a chatbot is the wrong tool right now. It needs a specific "go see a vet" message, not a generic refusal.
+- block: this is an actual refusal (e.g. a prompt injection attempt). The user sees a fixed "can't help with that" message.
+- rewrite: not a refusal at all. PII gets redacted and the request continues normally with the cleaned text.
+- allow: the only case a plain boolean would actually capture correctly.
+
+A single true/false collapses all of these into one signal, forcing you to either block things that shouldn't be blocked (like PII) or bolt on extra logic to handle scenarios like "actually this is an emergency" or "actually just rewrite this." The decision also carries rail and reason, so every action is auditable — you can log why something got escalated or blocked, not just that it did.
 
 ### ❓ Question #2
 
